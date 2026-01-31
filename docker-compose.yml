@@ -1,21 +1,86 @@
-version: "3.9"
 
 services:
-  app:
+  app1:
     build: .
-    container_name: game-api
-    ports:
-      - "7653:7653"
+    hostname: app1
+    expose:
+      - "7653"
     environment:
       NODE_ENV: development
       MONGO_URI: mongodb://root:example@mongo:27017/gameStore?authSource=admin
       SESSION_SECRET: docker-secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - app-network
 
+  app2:
+    build: .
+    hostname: app2
+    expose:
+      - "7653"
+    environment:
+      NODE_ENV: development
+      MONGO_URI: mongodb://root:example@mongo:27017/gameStore?authSource=admin
+      SESSION_SECRET: docker-secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  app3:
+    build: .
+    hostname: app3
+    expose:
+      - "7653"
+    environment:
+      NODE_ENV: development
+      MONGO_URI: mongodb://root:example@mongo:27017/gameStore?authSource=admin
+      SESSION_SECRET: docker-secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  apache:
+    build: ./apache
+    container_name: apache
+    ports:
+      - "8080:8080"
+    depends_on:
+      - app1
+      - app2
+      - app3
+    networks:
+      - app-network
+     
   mongo:
     image: mongo:6
     container_name: mongo
@@ -24,12 +89,13 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: example
       MONGO_INITDB_DATABASE: gameStore
-    ports:
-      - "27017:27017"
     volumes:
       - mongo-data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/init.js:ro
     networks:
       - app-network
+    ports:
+      - "27017:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s

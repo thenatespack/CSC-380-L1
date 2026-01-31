@@ -12,9 +12,11 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "connect-redis": "^9.0.0",
     "express": "^5.2.1",
-    "express-session": "^1.18.2",
+    "express-session": "^1.19.0",
     "mongodb": "^7.0.0",
-    "mongoose": "^9.1.4"
+    "mongoose": "^9.1.4",
+    "redis": "^5.10.0"
   }
 }
