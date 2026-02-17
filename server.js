@@ -3,6 +3,7 @@ const path = require("path");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const { DAL } = require("./DAL/mongoDAL");
+const { connectProducer, sendNotification } = require("./kafka");
 
 const { RedisStore } = require("connect-redis");
 const { createClient } = require("redis");
@@ -24,6 +25,10 @@ const redisClient = createClient({
   },
 });
 
+(async () => {
+  await connectProducer();
+})();
+
 redisClient.on("error", (err) => console.error("Redis Client Error", err));
 redisClient.on("connect", () => console.log("Connected to Redis"));
 
@@ -32,15 +37,15 @@ redisClient.on("connect", () => console.log("Connected to Redis"));
     await redisClient.connect();
   } catch (err) {
     console.error("Failed to connect to Redis — sessions will not work!", err);
-      }
+  }
 })();
 
 app.use(
   session({
     store: new RedisStore({
       client: redisClient,
-      prefix: "sess:",           
-      ttl: 24 * 60 * 60,         
+      prefix: "sess:",
+      ttl: 24 * 60 * 60,
     }),
     secret: process.env.SESSION_SECRET || "keyboard cat",
     resave: false,
@@ -52,11 +57,10 @@ app.use(
       maxAge: 24 * 60 * 60 * 1000,
       httpOnly: true,
     },
-  })
+  }),
 );
 
-
-const baseUrl = `http://localhost:{port}`;
+const baseUrl = `http://localhost:8080`;
 
 app.post("/users", async (req, res) => {
   try {
@@ -113,10 +117,31 @@ app.get("/users/:id", async (req, res) => {
 });
 
 app.put("/users/:id", async (req, res) => {
-  const updated = await DAL.updateUser(req.params.id, req.body);
-  if (!updated) {
+  const { id } = req.params;
+  const { password, ...rest } = req.body;
+
+  const existing = await DAL.getUserById(id);
+  if (!existing) {
     return res.status(404).json({ error: "User not found" });
   }
+
+  let updateDoc = { ...rest };
+  let passwordChanged = false;
+
+  if (password) {
+    updateDoc.password = await bcrypt.hash(password, 10);
+    passwordChanged = true;
+  }
+
+  await DAL.updateUser(id, updateDoc);
+
+  if (passwordChanged) {
+    await sendNotification("PASSWORD_CHANGED", {
+      userId: id,
+      email: existing.email,
+    });
+  }
+
   res.status(204).send();
 });
 
@@ -133,8 +158,8 @@ app.post("/signin", async (req, res) => {
   }
 
   req.session.userId = user.id;
-  console.log("assinged session id")
-  console.log(user.id)
+  console.log("assinged session id");
+  console.log(user.id);
 
   res.status(200).json({
     message: "Signed in",
@@ -304,6 +329,16 @@ app.post("/offers", async (req, res) => {
   };
 
   await DAL.createOffer(offer);
+  const owner = await DAL.getUserById(game.ownerId);
+  const buyer = await DAL.getUserById(req.session.userId);
+
+  await sendNotification("OFFER_CREATED", {
+    offerId: offer.id,
+    gameId: game.id,
+    amount: offer.amount,
+    offeror: { id: buyer.id, email: buyer.email },
+    offeree: { id: owner.id, email: owner.email },
+  });
 
   res.status(201).json({
     message: "Offer created",
@@ -315,7 +350,7 @@ app.post("/offers", async (req, res) => {
   });
 });
 
-app.get("/offers/:offerId", async (req, middleware) => {
+app.get("/offers/:offerId", async (req, res) => {
   const offer = await DAL.getOfferById(req.params.offerId);
   if (!offer) {
     return res.status(404).json({ error: "Offer not found" });
@@ -336,18 +371,30 @@ app.post("/offers/:offerId/accept", async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Not authenticated" });
   }
-  
+
   const offer = await DAL.getOfferById(req.params.offerId);
   if (!offer || offer.status !== "pending") {
     return res.status(400).json({ error: "Invalid offer" });
   }
-  
+
   const game = await DAL.getGameById(offer.gameId);
   if (game.ownerId !== req.session.userId) {
     return res.status(403).json({ error: "Not authorized" });
   }
 
   await DAL.updateOffer(req.params.offerId, { status: "accepted" });
+
+  const buyer = await DAL.getUserById(offer.buyerId);
+  const owner = await DAL.getUserById(game.ownerId);
+
+  await sendNotification("OFFER_ACCEPTED", {
+    offerId: offer.id,
+    gameId: game.id,
+    amount: offer.amount,
+    offeror: { id: buyer.id, email: buyer.email },
+    offeree: { id: owner.id, email: owner.email },
+  });
+
   res.status(200).json({ message: "Offer accepted" });
 });
 
@@ -355,18 +402,30 @@ app.post("/offers/:offerId/reject", async (req, res) => {
   if (!req.session.userId) {
     return res.status(401).json({ error: "Not authenticated" });
   }
-  
+
   const offer = await DAL.getOfferById(req.params.offerId);
   if (!offer || offer.status !== "pending") {
     return res.status(400).json({ error: "Invalid offer" });
   }
-  
+
   const game = await DAL.getGameById(offer.gameId);
   if (game.ownerId !== req.session.userId) {
     return res.status(403).json({ error: "Not authorized" });
   }
 
   await DAL.updateOffer(req.params.offerId, { status: "rejected" });
+
+  const buyer = await DAL.getUserById(offer.buyerId);
+  const owner = await DAL.getUserById(game.ownerId);
+
+  await sendNotification("OFFER_REJECTED", {
+    offerId: offer.id,
+    gameId: game.id,
+    amount: offer.amount,
+    offeror: { id: buyer.id, email: buyer.email },
+    offeree: { id: owner.id, email: owner.email },
+  });
+
   res.status(200).json({ message: "Offer rejected" });
 });
 

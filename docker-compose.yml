@@ -1,7 +1,9 @@
+version: '3.8'
 
 services:
   app1:
     build: .
+    container_name: app1
     hostname: app1
     expose:
       - "7653"
@@ -11,16 +13,22 @@ services:
       SESSION_SECRET: docker-secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      KAFKA_BROKER: redpanda:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: 1
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+      redpanda:
+        condition: service_healthy
     networks:
       - app-network
+    restart: unless-stopped
 
   app2:
     build: .
+    container_name: app2
     hostname: app2
     expose:
       - "7653"
@@ -30,16 +38,22 @@ services:
       SESSION_SECRET: docker-secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      KAFKA_BROKER: redpanda:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: 1
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+      redpanda:
+        condition: service_healthy
     networks:
       - app-network
+    restart: unless-stopped
 
   app3:
     build: .
+    container_name: app3
     hostname: app3
     expose:
       - "7653"
@@ -49,13 +63,37 @@ services:
       SESSION_SECRET: docker-secret
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      KAFKA_BROKER: redpanda:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: 1
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
+      redpanda:
+        condition: service_healthy
     networks:
       - app-network
+    restart: unless-stopped
+
+  email-consumer:
+    build: ./email-service
+    container_name: email-consumer
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: redpanda:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: 1
+    networks:
+      - app-network
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -68,19 +106,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  apache:
-    build: ./apache
-    container_name: apache
-    ports:
-      - "8080:8080"
-    depends_on:
-      - app1
-      - app2
-      - app3
-    networks:
-      - app-network
-     
   mongo:
     image: mongo:6
     container_name: mongo
@@ -102,9 +129,55 @@ services:
       timeout: 5s
       retries: 5
 
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    restart: unless-stopped
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --mode=dev-container
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk topic list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 90s
+
+  apache:
+    build: ./apache
+    container_name: apache
+    ports:
+      - "8080:8080"
+    depends_on:
+      - app1
+      - app2
+      - app3
+    networks:
+      - app-network
+    restart: unless-stopped
+
 networks:
   app-network:
     driver: bridge
+    name: game-exchange-network
 
 volumes:
   mongo-data:
+  redpanda-data:

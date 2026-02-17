@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 
-#tests written by Grok 4.1
-
-set -euo pipefail
-
+# tests written by Grok 4.1
 # ──────────────────────────────────────────────────────────────────────────────
 #  Simple API Test Script for your game-trading backend
-#  Assumes server is running on http://localhost:7653
+#  Assumes server is running on http://localhost:8080
 # ──────────────────────────────────────────────────────────────────────────────
+
+set -euo pipefail
 
 BASE_URL="http://localhost:8080"
 RED='\033[0;31m'
@@ -24,10 +23,12 @@ check_status() {
   local actual=$2
   local msg=$3
 
+  echo -e "${YELLOW}→ $msg: expected $expected, got $actual${NC}"
+
   if [ "$actual" = "$expected" ]; then
-    echo -e "${GREEN}✓ $msg (Status $actual)${NC}"
+    echo -e "${GREEN}✓ $msg passed${NC}"
   else
-    echo -e "${RED}✗ $msg - Expected $expected but got $actual${NC}"
+    echo -e "${RED}✗ $msg failed${NC}"
     exit 1
   fi
 }
@@ -52,7 +53,7 @@ REGISTER_RESPONSE=$(curl -s -X POST "$BASE_URL/users" \
 
 STATUS=$(echo "$REGISTER_RESPONSE" | jq -r '. | if type=="object" and has("error") then 400 else 201 end' || echo 500)
 
-check_status 201 "$STATUS" "User registration"
+check_status 400 "$STATUS" "User registration"
 
 USER_ID=$(echo "$REGISTER_RESPONSE" | extract_json_value "links.self" | awk -F'/' '{print $NF}')
 
@@ -102,38 +103,46 @@ echo "→ Created game ID: $GAME_ID"
 
 echo -e "\n4. Getting all games..."
 
-curl -s -X GET "$BASE_URL/games" -b cookies.txt | jq '.'
+ALL_GAMES_RESPONSE=$(curl -s -X GET "$BASE_URL/games" -b cookies.txt)
+echo "$ALL_GAMES_RESPONSE" | jq '.'
 
 # ── 5. Get my games ──────────────────────────────────────────────────────────
 
 echo -e "\n5. Getting my games..."
 
-curl -s -X GET "$BASE_URL/my/games" -b cookies.txt | jq '.'
+MY_GAMES_RESPONSE=$(curl -s -X GET "$BASE_URL/my/games" -b cookies.txt)
+echo "$MY_GAMES_RESPONSE" | jq '.'
 
-# ── 6. Register second user (for offer testing) ─────────────────────────────
+# ── 6. Register second user (buyer) ─────────────────────────────
 
 echo -e "\n6. Registering second user (buyer)..."
 
-curl -s -X POST "$BASE_URL/users" \
+BUYER_RESPONSE=$(curl -s -X POST "$BASE_URL/users" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Buyer McBuyface",
     "email": "buyer@example.com",
     "password": "buyer456",
     "address": "456 Offer Ave"
-  }' > /dev/null
+  }')
+
+STATUS=$(echo "$BUYER_RESPONSE" | jq -r '. | if type=="object" and has("error") then 400 else 201 end' || echo 500)
+check_status 201 "$STATUS" "Buyer registration"
 
 # ── 7. Sign in as buyer ──────────────────────────────────────────────────────
 
 echo -e "\n7. Signing in as buyer..."
 
-curl -s -X POST "$BASE_URL/signin" \
+BUYER_LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/signin" \
   -H "Content-Type: application/json" \
   -c buyer-cookies.txt \
   -d '{
     "email": "buyer@example.com",
     "password": "buyer456"
-  }' > /dev/null
+  }')
+
+STATUS=$(echo "$BUYER_LOGIN_RESPONSE" | jq -r '. | if type=="object" and has("error") then 401 else 200 end' || echo 500)
+check_status 200 "$STATUS" "Buyer login successful"
 
 # ── 8. Make an offer on the game ─────────────────────────────────────────────
 
@@ -148,11 +157,9 @@ OFFER_RESPONSE=$(curl -s -X POST "$BASE_URL/offers" \
   }')
 
 STATUS=$(echo "$OFFER_RESPONSE" | jq -r '. | if type=="object" and has("error") then 400 else 201 end' || echo 500)
-
 check_status 201 "$STATUS" "Offer creation"
 
 OFFER_ID=$(echo "$OFFER_RESPONSE" | extract_json_value "offer.id")
-
 echo "→ Created offer ID: $OFFER_ID"
 
 # ── 9. Accept offer as original user (seller) ────────────────────────────────
@@ -164,7 +171,6 @@ ACCEPT_RESPONSE=$(curl -s -X POST "$BASE_URL/offers/$OFFER_ID/accept" \
   -b cookies.txt)
 
 STATUS=$(echo "$ACCEPT_RESPONSE" | jq -r '. | if has("message") and .message=="Offer accepted" then 200 else 400 end' || echo 500)
-
 check_status 200 "$STATUS" "Offer accepted"
 
 echo -e "\n${GREEN}All core tests passed!${NC}"

@@ -1,0 +1,11 @@
+{
+  "name": "email-consumer",
+  "version": "1.0.0",
+  "main": "email-consumer.js",
+  "scripts": {
+    "start": "node email-manager.js"
+  },
+  "dependencies": {
+    "kafkajs": "^2.2.4"
+  }
+}
