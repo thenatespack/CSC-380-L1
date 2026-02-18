@@ -1,8 +1,6 @@
 import { Kafka } from 'kafkajs';
+import nodemailer from "nodemailer";
 
-async function sendEmail(to, subject, body) {
-  console.log(`Sending email to ${to}: ${subject}\n${body}`);
-}
 
 const kafka = new Kafka({
   clientId: 'email-processor',
@@ -10,6 +8,33 @@ const kafka = new Kafka({
 });
 
 const consumer = kafka.consumer({ groupId: 'email-service-group' });
+
+const transporter = nodemailer.createTransport({
+    host: 'smtp.ethereal.email',
+    port: 587,
+    auth: {
+        user: 'arvid.schneider@ethereal.email',
+        pass: 'bA7r2PaSRcPfYd8pda'
+    }
+});
+
+async function sendEmail(toEmail, E_subject, body) {
+  try {
+    console.log(`Sending email to ${toEmail}: ${E_subject}`);
+
+    const info = await transporter.sendMail({
+      from: "noreply@game-exchange.com",
+      to: toEmail,
+      subject: E_subject,
+      text: body,
+    });
+
+    console.log("Email sent:", info.messageId);
+  } catch (err) {
+    console.error("Failed to send email", err);
+    throw err; 
+  }
+}
 
 async function start() {
   await consumer.connect();
@@ -47,7 +72,7 @@ async function start() {
             await sendEmail(
               email,
               'Your password was changed',
-              `Hi,\n\nYour password has just been changed. If this wasn't you, please reset your password immediately and contact support.\n\nThanks,\nSupport Team`
+              `Hi,\nYour password has just been changed. If this wasn't you, please reset your password immediately and contact support.\nThanks,\nSupport Team`
             );
             break;
           }
@@ -59,7 +84,7 @@ async function start() {
               await sendEmail(
                 offeror.email,
                 'You created an offer',
-                `Hi,\n\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} has been created.\n\nThanks,\nMarketplace`
+                `Hi,\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} has been created.\nThanks,\nMarketplace`
               );
             }
 
@@ -67,7 +92,7 @@ async function start() {
               await sendEmail(
                 offeree.email,
                 'New offer on your game',
-                `Hi,\n\nYou received a new offer (${offerId}) on your game ${gameId} for ${amount}.\n\nThanks,\nMarketplace`
+                `Hi,\nYou received a new offer (${offerId}) on your game ${gameId} for ${amount}.\nThanks,\nMarketplace`
               );
             }
             break;
@@ -80,7 +105,7 @@ async function start() {
               await sendEmail(
                 offeror.email,
                 'Your offer was accepted',
-                `Hi,\n\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} was accepted.\n\nThanks,\nMarketplace`
+                `Hi,\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} was accepted.\nThanks,\nMarketplace`
               );
             }
 
@@ -88,7 +113,7 @@ async function start() {
               await sendEmail(
                 offeree.email,
                 'You accepted an offer',
-                `Hi,\n\nYou accepted offer (${offerId}) on your game ${gameId} for ${amount}.\n\nThanks,\nMarketplace`
+                `Hi,\nYou accepted offer (${offerId}) on your game ${gameId} for ${amount}.\nThanks,\nMarketplace`
               );
             }
             break;
@@ -101,7 +126,7 @@ async function start() {
               await sendEmail(
                 offeror.email,
                 'Your offer was rejected',
-                `Hi,\n\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} was rejected.\n\nThanks,\nMarketplace`
+                `Hi,\nYour offer (${offerId}) for game ${gameId} in the amount of ${amount} was rejected.\nThanks,\nMarketplace`
               );
             }
 
@@ -109,7 +134,7 @@ async function start() {
               await sendEmail(
                 offeree.email,
                 'You rejected an offer',
-                `Hi,\n\nYou rejected offer (${offerId}) on your game ${gameId} for ${amount}.\n\nThanks,\nMarketplace`
+                `Hi, \n You rejected offer (${offerId}) on your game ${gameId} for ${amount}.\nThanks,\nMarketplace`
               );
             }
             break;
