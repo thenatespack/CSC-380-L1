@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   app1:
@@ -173,6 +172,17 @@ services:
       - app-network
     restart: unless-stopped
 
+  prometheus:
+    build: ./prometheus
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
@@ -181,3 +191,5 @@ networks:
 volumes:
   mongo-data:
   redpanda-data:
+  prometheus-data:
+
