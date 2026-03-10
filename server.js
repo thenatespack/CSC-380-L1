@@ -5,11 +5,22 @@ const bcrypt = require("bcryptjs");
 const { DAL } = require("./DAL/mongoDAL");
 const { connectProducer, sendNotification } = require("./kafka");
 
+const client = require('prom-client');
 const { RedisStore } = require("connect-redis");
 const { createClient } = require("redis");
 
 const app = express();
 const port = 7653;
+
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics({ timeout: 5000 });
+
+const httpRequestDuration = new client.Histogram({
+  name: "http_request_duration_seconds",
+  help: "Duration of HTTP requests in seconds",
+  labelNames: ["method", "route", "status"],
+  buckets: [0.1, 0.3, 0.5, 1, 1.5, 2, 5], // adjust as needed
+});
 
 app.set("trust proxy", 1);
 
@@ -59,6 +70,23 @@ app.use(
     },
   }),
 );
+
+app.use((req, res, next) => {
+  const start = process.hrtime();
+
+  res.on("finish", () => {
+    const diff = process.hrtime(start);
+    const duration = diff[0] + diff[1] / 1e9;
+
+    const route = req.route ? req.route.path : req.path;
+
+    httpRequestDuration
+      .labels(req.method, route, res.statusCode)
+      .observe(duration);
+  });
+
+  next();
+});
 
 const baseUrl = `http://localhost:8080`;
 
@@ -427,6 +455,11 @@ app.post("/offers/:offerId/reject", async (req, res) => {
   });
 
   res.status(200).json({ message: "Offer rejected" });
+});
+
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  res.end(await client.register.metrics());
 });
 
 app.listen(port, () => {

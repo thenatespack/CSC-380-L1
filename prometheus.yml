@@ -1,0 +1,51 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  # API apps (Node.js, on port 7653, must expose /metrics)
+  - job_name: "app1"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app1:7653"]
+
+  - job_name: "app2"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app2:7653"]
+
+  - job_name: "app3"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app3:7653"]
+
+  # Email consumer (if you add /metrics)
+  - job_name: "email-consumer"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["email-consumer:7653"]
+
+  # Apache metrics via exporter (mod_status)
+  - job_name: "apache"
+    static_configs:
+      - targets: ["apache-exporter:9117"]
+
+  # Redpanda (built‑in Prometheus endpoint)
+  - job_name: "redpanda"
+    static_configs:
+      - targets: ["redpanda:9644"]
+
+  # MongoDB exporter
+  - job_name: "mongo"
+    static_configs:
+      - targets: ["mongo-exporter:9216"]
+
+  # Redis exporter
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
