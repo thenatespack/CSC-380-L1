@@ -6,7 +6,9 @@
     "start": "node email-manager.js"
   },
   "dependencies": {
+    "express": "^5.2.1",
     "kafkajs": "^2.2.4",
-    "nodemailer": "^8.0.1"
+    "nodemailer": "^8.0.1",
+    "prom-client": "^15.1.3"
   }
 }
